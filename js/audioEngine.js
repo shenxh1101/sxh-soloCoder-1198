@@ -263,6 +263,34 @@ SynthApp.AudioEngine = (function() {
     return audioCtx;
   }
 
+  function getAllKeySettings() {
+    var result = [];
+    for (var i = 0; i < 8; i++) {
+      result.push({
+        waveform: keySettings[i].waveform,
+        attack: keySettings[i].attack,
+        decay: keySettings[i].decay,
+        sustain: keySettings[i].sustain,
+        release: keySettings[i].release
+      });
+    }
+    return result;
+  }
+
+  function restoreAllKeySettings(settings) {
+    if (!settings || !Array.isArray(settings)) return;
+    for (var i = 0; i < 8 && i < settings.length; i++) {
+      var s = settings[i];
+      if (s) {
+        keySettings[i].waveform = s.waveform || 'sine';
+        keySettings[i].attack = typeof s.attack === 'number' ? s.attack : 0.01;
+        keySettings[i].decay = typeof s.decay === 'number' ? s.decay : 0.1;
+        keySettings[i].sustain = typeof s.sustain === 'number' ? s.sustain : 0.8;
+        keySettings[i].release = typeof s.release === 'number' ? s.release : 0.2;
+      }
+    }
+  }
+
   return {
     init: init,
     noteOn: noteOn,
@@ -281,6 +309,8 @@ SynthApp.AudioEngine = (function() {
     setEffects: setEffects,
     getEffects: getEffects,
     getAnalyser: getAnalyser,
-    getAudioContext: getAudioContext
+    getAudioContext: getAudioContext,
+    getAllKeySettings: getAllKeySettings,
+    restoreAllKeySettings: restoreAllKeySettings
   };
 })();

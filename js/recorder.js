@@ -7,7 +7,12 @@ SynthApp.Recorder = (function() {
   var recordingStartTime = 0;
   var playbackTimer = null;
   var playbackNodes = [];
+  var playbackStartCtxTime = 0;
+  var playbackTotalDuration = 0;
+  var playbackProgressTimer = null;
   var onStateChange = null;
+  var onProgressUpdate = null;
+  var onNoteHighlight = null;
 
   function startRecording() {
     recordedNotes = [];
@@ -66,7 +71,16 @@ SynthApp.Recorder = (function() {
     }
   }
 
-  function playRecording() {
+  function getTotalDuration() {
+    var maxEnd = 0;
+    for (var i = 0; i < recordedNotes.length; i++) {
+      var end = recordedNotes[i].startTime + recordedNotes[i].duration;
+      if (end > maxEnd) maxEnd = end;
+    }
+    return maxEnd;
+  }
+
+  function playRecording(seekOffset) {
     if (recordedNotes.length === 0) return;
     if (playing) return;
 
@@ -79,23 +93,32 @@ SynthApp.Recorder = (function() {
 
     destroyPlaybackNodes();
 
+    var offset = seekOffset || 0;
+    var totalDur = getTotalDuration();
+    playbackTotalDuration = totalDur;
+    playbackStartCtxTime = audioCtx.currentTime;
+
     var now = audioCtx.currentTime;
 
     for (var i = 0; i < recordedNotes.length; i++) {
       var note = recordedNotes[i];
-      var startTime = now + note.startTime;
+      var noteEnd = note.startTime + note.duration;
+      if (noteEnd <= offset) continue;
+
+      var adjustedStart = note.startTime - offset;
+      var startTime = now + adjustedStart;
       var endTime = startTime + note.duration;
 
       scheduleNotePlayback(note.noteIndex, note.frequency, startTime, endTime);
     }
 
-    if (recordedNotes.length > 0) {
-      var lastNote = recordedNotes[recordedNotes.length - 1];
-      var totalDuration = (now + lastNote.startTime + lastNote.duration - now) * 1000 + 500;
+    startProgressTracking();
 
+    if (totalDur > offset) {
+      var remaining = (totalDur - offset) * 1000 + 500;
       playbackTimer = setTimeout(function() {
         stopPlayback();
-      }, totalDuration);
+      }, remaining);
     }
   }
 
@@ -193,12 +216,79 @@ SynthApp.Recorder = (function() {
     playbackNodes = [];
   }
 
+  function startProgressTracking() {
+    stopProgressTracking();
+    playbackProgressTimer = setInterval(function() {
+      updateProgress();
+    }, 50);
+  }
+
+  function stopProgressTracking() {
+    if (playbackProgressTimer) {
+      clearInterval(playbackProgressTimer);
+      playbackProgressTimer = null;
+    }
+    highlightPlaybackNote(-1);
+  }
+
+  function updateProgress() {
+    if (!playing) {
+      stopProgressTracking();
+      return;
+    }
+
+    var audioCtx = SynthApp.AudioEngine.getAudioContext();
+    if (!audioCtx) return;
+
+    var elapsed = audioCtx.currentTime - playbackStartCtxTime;
+    var total = playbackTotalDuration;
+
+    if (onProgressUpdate) {
+      onProgressUpdate({
+        elapsed: elapsed,
+        total: total,
+        progress: total > 0 ? Math.min(1, elapsed / total) : 0
+      });
+    }
+
+    var currentNote = findCurrentNote(elapsed);
+    if (onNoteHighlight) {
+      onNoteHighlight(currentNote);
+    }
+
+    if (elapsed >= total + 0.5) {
+      stopPlayback();
+    }
+  }
+
+  function findCurrentNote(elapsed) {
+    for (var i = 0; i < recordedNotes.length; i++) {
+      var n = recordedNotes[i];
+      if (elapsed >= n.startTime && elapsed < n.startTime + n.duration) {
+        return n.noteIndex;
+      }
+    }
+    return -1;
+  }
+
+  function seekPlayback(seekTime) {
+    if (!playing) {
+      playRecording(seekTime);
+      return;
+    }
+    stopPlayback();
+    setTimeout(function() {
+      playRecording(seekTime);
+    }, 50);
+  }
+
   function stopPlayback() {
     playing = false;
     if (playbackTimer) {
       clearTimeout(playbackTimer);
       playbackTimer = null;
     }
+    stopProgressTracking();
     destroyPlaybackNodes();
     notifyState();
   }
@@ -222,10 +312,29 @@ SynthApp.Recorder = (function() {
     return recordedNotes;
   }
 
+  function updateNote(index, params) {
+    if (index < 0 || index >= recordedNotes.length) return;
+    if (params.startTime !== undefined) recordedNotes[index].startTime = params.startTime;
+    if (params.duration !== undefined) recordedNotes[index].duration = params.duration;
+    if (params.noteIndex !== undefined) {
+      recordedNotes[index].noteIndex = params.noteIndex;
+      recordedNotes[index].frequency = SynthApp.NOTE_FREQUENCIES[params.noteIndex];
+    }
+    notifyState();
+  }
+
+  function deleteNote(index) {
+    if (index < 0 || index >= recordedNotes.length) return;
+    recordedNotes.splice(index, 1);
+    notifyState();
+  }
+
   function exportJSON() {
+    var keySettings = SynthApp.AudioEngine.getAllKeySettings();
     var data = {
-      version: '1.0',
+      version: '2.0',
       createdAt: new Date().toISOString(),
+      keySettings: keySettings,
       notes: recordedNotes.map(function(n) {
         return {
           noteIndex: n.noteIndex,
@@ -262,7 +371,20 @@ SynthApp.Recorder = (function() {
     return true;
   }
 
-  function importJSON(file) {
+  function validateKeySettings(settings) {
+    if (!settings || !Array.isArray(settings)) return false;
+    for (var i = 0; i < settings.length; i++) {
+      var s = settings[i];
+      if (!s || typeof s.waveform !== 'string') return false;
+      if (typeof s.attack !== 'number') return false;
+      if (typeof s.decay !== 'number') return false;
+      if (typeof s.sustain !== 'number') return false;
+      if (typeof s.release !== 'number') return false;
+    }
+    return true;
+  }
+
+  function importJSON(file, importTimbre) {
     var reader = new FileReader();
     reader.onload = function(e) {
       try {
@@ -284,6 +406,11 @@ SynthApp.Recorder = (function() {
 
         stopPlayback();
         recordedNotes = parsedNotes;
+
+        if (importTimbre && data.keySettings && validateKeySettings(data.keySettings)) {
+          SynthApp.AudioEngine.restoreAllKeySettings(data.keySettings);
+        }
+
         notifyState();
       } catch (err) {
         console.warn('导入失败：JSON 解析错误，原有录音保持不变');
@@ -297,6 +424,14 @@ SynthApp.Recorder = (function() {
 
   function setOnStateChange(callback) {
     onStateChange = callback;
+  }
+
+  function setOnProgressUpdate(callback) {
+    onProgressUpdate = callback;
+  }
+
+  function setOnNoteHighlight(callback) {
+    onNoteHighlight = callback;
   }
 
   function notifyState() {
@@ -316,13 +451,19 @@ SynthApp.Recorder = (function() {
     recordNoteOff: recordNoteOff,
     finalizeHeldNotes: finalizeHeldNotes,
     playRecording: playRecording,
+    seekPlayback: seekPlayback,
     stopPlayback: stopPlayback,
     clearRecording: clearRecording,
     isRecording: isRecording,
     isPlaying: isPlaying,
     getRecordedNotes: getRecordedNotes,
+    getTotalDuration: getTotalDuration,
+    updateNote: updateNote,
+    deleteNote: deleteNote,
     exportJSON: exportJSON,
     importJSON: importJSON,
-    setOnStateChange: setOnStateChange
+    setOnStateChange: setOnStateChange,
+    setOnProgressUpdate: setOnProgressUpdate,
+    setOnNoteHighlight: setOnNoteHighlight
   };
 })();

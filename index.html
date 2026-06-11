@@ -25,6 +25,11 @@
       </div>
     </section>
 
+    <div class="playback-progress" id="playbackProgress" style="display:none">
+      <input type="range" id="progressBar" class="progress-slider" min="0" max="1000" value="0">
+      <span class="progress-time" id="progressTime">0:00.0 / 0:00.0</span>
+    </div>
+
     <section class="keyboard-section">
       <div class="keys-container" id="keysContainer">
         <button class="key-btn" data-note="0" data-key="1">
@@ -141,6 +146,19 @@
         </div>
       </section>
 
+      <section class="control-panel timbre-panel">
+        <h3 class="panel-title">TIMBRE SCHEMES</h3>
+        <div class="timbre-controls">
+          <select id="timbreSelect" class="timbre-select">
+            <option value="">-- 选择方案 --</option>
+          </select>
+          <div class="timbre-buttons">
+            <button id="saveTimbreBtn" class="timbre-action-btn">保存方案</button>
+            <button id="deleteTimbreBtn" class="timbre-action-btn timbre-delete">删除</button>
+          </div>
+        </div>
+      </section>
+
       <section class="control-panel recorder-panel">
         <h3 class="panel-title">RECORDER</h3>
         <div class="recorder-controls">
@@ -166,6 +184,41 @@
           <button id="importBtn" class="file-btn">导入 JSON</button>
         </div>
       </section>
+
+      <section class="control-panel timeline-panel">
+        <h3 class="panel-title">TIMELINE EDITOR</h3>
+        <div class="timeline-wrap" id="timelineWrap">
+          <canvas id="timelineCanvas" class="timeline-canvas"></canvas>
+        </div>
+        <div class="timeline-edit" id="timelineEdit" style="display:none">
+          <div class="edit-row">
+            <label class="edit-label">音符</label>
+            <select id="editNoteIndex" class="edit-select">
+              <option value="0">C4</option>
+              <option value="1">D4</option>
+              <option value="2">E4</option>
+              <option value="3">F4</option>
+              <option value="4">G4</option>
+              <option value="5">A4</option>
+              <option value="6">B4</option>
+              <option value="7">C5</option>
+            </select>
+          </div>
+          <div class="edit-row">
+            <label class="edit-label">开始(s)</label>
+            <input type="number" id="editStartTime" class="edit-input" step="0.01" min="0">
+          </div>
+          <div class="edit-row">
+            <label class="edit-label">时长(s)</label>
+            <input type="number" id="editDuration" class="edit-input" step="0.01" min="0.01">
+          </div>
+          <div class="edit-info">总时长: <span id="editTotalDur">0s</span></div>
+          <div class="edit-actions">
+            <button id="applyEditBtn" class="edit-action-btn">应用</button>
+            <button id="deleteEditBtn" class="edit-action-btn edit-delete">删除</button>
+          </div>
+        </div>
+      </section>
     </div>
 
     <footer class="synth-footer">
@@ -175,9 +228,29 @@
 
   <input type="file" id="importFile" accept=".json" style="display:none">
 
+  <div class="import-dialog" id="importDialog" style="display:none">
+    <div class="import-dialog-content">
+      <h3 class="import-dialog-title">导入选项</h3>
+      <p class="import-dialog-desc">检测到文件中包含音色设置，请选择导入方式：</p>
+      <label class="import-radio">
+        <input type="radio" name="importMode" value="recording" checked>
+        <span>仅导入录音</span>
+      </label>
+      <label class="import-radio">
+        <input type="radio" name="importMode" value="full">
+        <span>导入录音和音色设置</span>
+      </label>
+      <div class="import-dialog-actions">
+        <button id="importConfirm" class="import-dialog-btn import-confirm">确认</button>
+        <button id="importCancel" class="import-dialog-btn import-cancel">取消</button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/presets.js"></script>
   <script src="js/audioEngine.js"></script>
   <script src="js/oscilloscope.js"></script>
+  <script src="js/timbreManager.js"></script>
   <script src="js/recorder.js"></script>
   <script src="js/main.js"></script>
 </body>
