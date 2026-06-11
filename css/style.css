@@ -1221,3 +1221,123 @@ input[type="range"].effect-slider::-webkit-slider-thumb:hover {
   color: var(--amber);
   background: rgba(255, 176, 0, 0.08);
 }
+
+.beat-position {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  color: var(--neon-magenta);
+  text-shadow: 0 0 6px var(--neon-magenta-dim);
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.metro-controls {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.metro-btn {
+  padding: 4px 10px;
+  background: var(--bg-key);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.metro-btn:hover {
+  border-color: var(--neon-cyan);
+  color: var(--text-secondary);
+}
+
+.metro-btn.active {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+  background: rgba(0, 240, 255, 0.1);
+  box-shadow: 0 0 10px var(--neon-cyan-dim);
+}
+
+.segment-options {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.repeat-label {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.repeat-input {
+  width: 42px;
+  padding: 3px 5px;
+  background: var(--bg-key);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--neon-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  text-align: center;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.repeat-input:focus {
+  border-color: var(--neon-cyan);
+}
+
+.repeat-input::-webkit-inner-spin-button {
+  opacity: 1;
+  height: 16px;
+}
+
+.play-all-btn {
+  margin-left: auto;
+}
+
+.play-all-btn:hover {
+  border-color: var(--neon-magenta) !important;
+  color: var(--neon-magenta) !important;
+  background: rgba(255, 0, 170, 0.08) !important;
+  box-shadow: 0 0 10px var(--neon-magenta-dim) !important;
+}
+
+.timesig-select {
+  padding: 3px 6px;
+  background: var(--bg-key);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--neon-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  outline: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  text-align: center;
+}
+
+.timesig-select:focus {
+  border-color: var(--neon-cyan);
+}
+
+.timesig-slash {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}

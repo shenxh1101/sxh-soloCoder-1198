@@ -27,6 +27,7 @@
 
     <div class="playback-progress" id="playbackProgress" style="display:none">
       <input type="range" id="progressBar" class="progress-slider" min="0" max="1000" value="0">
+      <span class="beat-position" id="beatPosition" style="display:none"></span>
       <span class="progress-time" id="progressTime">0:00.0 / 0:00.0</span>
     </div>
 
@@ -183,6 +184,10 @@
           <span id="recIndicator" class="rec-indicator"></span>
           <span id="recStatus" class="rec-status-text">就绪</span>
         </div>
+        <div class="metro-controls">
+          <button id="metronomeBtn" class="metro-btn" title="节拍器">&#9833; 节拍器</button>
+          <button id="countInBtn" class="metro-btn" title="录制前倒计时 1 小节">倒计时</button>
+        </div>
         <div class="file-controls">
           <button id="exportBtn" class="file-btn">导出 JSON</button>
           <button id="importBtn" class="file-btn">导入 JSON</button>
@@ -200,8 +205,28 @@
             <button id="loopSegmentBtn" class="segment-action-btn" title="循环播放">LOOP</button>
           </div>
         </div>
+        <div class="segment-options" id="segmentOptions">
+          <button id="renameSegBtn" class="segment-action-btn">改名</button>
+          <button id="moveSegUpBtn" class="segment-action-btn" title="上移">▲</button>
+          <button id="moveSegDownBtn" class="segment-action-btn" title="下移">▼</button>
+          <label class="repeat-label">重复</label>
+          <input type="number" id="repeatCount" class="repeat-input" value="1" min="1" max="99" step="1">
+          <button id="playAllBtn" class="segment-action-btn play-all-btn" title="播放全部片段">▶全部</button>
+        </div>
         <div class="quantize-bar">
-          <span class="quantize-label">量化:</span>
+          <span class="quantize-label">拍号:</span>
+          <select id="timesigNum" class="timesig-select">
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4" selected>4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+          </select>
+          <span class="timesig-slash">/</span>
+          <select id="timesigDen" class="timesig-select">
+            <option value="4" selected>4</option>
+            <option value="8">8</option>
+          </select>
           <input type="number" id="bpmInput" class="bpm-input" value="120" min="40" max="300" step="1" title="BPM">
           <span class="quantize-label">BPM</span>
           <button id="quantize4Btn" class="quantize-btn">1/4</button>
@@ -244,7 +269,7 @@
     </div>
 
     <footer class="synth-footer">
-      <span>按下键盘 1-8 演奏 | 点击琴键或使用鼠标</span>
+      <span>按下键盘 1-8 演奏 | 双击片段标签改名 | 拖动进度条跳转</span>
     </footer>
   </div>
 

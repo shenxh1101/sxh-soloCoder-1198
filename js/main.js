@@ -26,14 +26,27 @@ var SynthApp = window.SynthApp || {};
     bindSegments();
     bindImportDialog();
     bindProgressBar();
+    bindMetronome();
+    bindTimeSignature();
+    bindSegmentOptions();
 
     recorder.setOnStateChange(updateRecorderUI);
     recorder.setOnProgressUpdate(updateProgressUI);
     recorder.setOnNoteHighlight(highlightPlaybackKey);
 
+    syncSettingsFromRecorder();
     renderTimbreList();
     renderSegments();
     renderTimeline();
+  }
+
+  function syncSettingsFromRecorder() {
+    document.getElementById('bpmInput').value = recorder.getBPM();
+    var ts = recorder.getTimeSignature();
+    document.getElementById('timesigNum').value = ts.num;
+    document.getElementById('timesigDen').value = ts.den;
+    document.getElementById('metronomeBtn').classList.toggle('active', recorder.isMetronomeOn());
+    document.getElementById('countInBtn').classList.toggle('active', recorder.isCountInOn());
   }
 
   function bindKeys() {
@@ -192,6 +205,13 @@ var SynthApp = window.SynthApp || {};
     }
   }
 
+  function ensureKeySelected() {
+    var selKey = audioEngine.getSelectedKey();
+    if (selKey < 0) {
+      selectKey(0);
+    }
+  }
+
   function bindWaveformButtons() {
     var buttons = document.querySelectorAll('.wave-btn');
     buttons.forEach(function(btn) {
@@ -270,10 +290,8 @@ var SynthApp = window.SynthApp || {};
           release: preset.release
         });
 
-        var selKey = audioEngine.getSelectedKey();
-        if (selKey >= 0) {
-          refreshUIForKey(selKey);
-        }
+        ensureKeySelected();
+        refreshUIForKey(audioEngine.getSelectedKey());
       });
     });
   }
@@ -310,10 +328,8 @@ var SynthApp = window.SynthApp || {};
 
       audioEngine.restoreAllKeySettings(preset.keySettings);
 
-      var selKey = audioEngine.getSelectedKey();
-      if (selKey >= 0) {
-        refreshUIForKey(selKey);
-      }
+      ensureKeySelected();
+      refreshUIForKey(audioEngine.getSelectedKey());
 
       showTimbreInfo(name);
     });
@@ -399,7 +415,7 @@ var SynthApp = window.SynthApp || {};
       var scaledW = rect.width;
       var noteH = 18;
       var noteGap = 3;
-      var topPad = 4;
+      var topPad = 28;
 
       var clicked = -1;
       for (var i = notes.length - 1; i >= 0; i--) {
@@ -486,13 +502,16 @@ var SynthApp = window.SynthApp || {};
     var notes = recorder.getRecordedNotes();
     var totalDur = recorder.getTotalDuration();
 
+    if (totalDur <= 0) totalDur = 4;
+
     var wrap = document.getElementById('timelineWrap');
     var wrapW = wrap ? wrap.clientWidth : 800;
 
+    var rulerH = 22;
     var noteH = 18;
     var noteGap = 3;
-    var topPad = 4;
-    var totalH = Math.max(40, topPad + notes.length * (noteH + noteGap) + 8);
+    var topPad = rulerH + 6;
+    var totalH = Math.max(60, rulerH + topPad + notes.length * (noteH + noteGap) + 8);
 
     var dpr = window.devicePixelRatio || 1;
     canvas.width = Math.max(wrapW, 800) * dpr;
@@ -512,27 +531,61 @@ var SynthApp = window.SynthApp || {};
 
     ctx.clearRect(0, 0, scaledW, totalH);
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-    ctx.lineWidth = 0.5;
-    for (var t = 0; t <= totalDur; t += 0.5) {
-      var tx = (t / totalDur) * scaledW;
+    var bpm = recorder.getBPM();
+    var ts = recorder.getTimeSignature();
+    var beatDur = 60 / bpm;
+    var measureDur = beatDur * ts.num;
+
+    var totalMeasures = Math.max(1, Math.ceil(totalDur / measureDur));
+    var paddedDur = totalMeasures * measureDur;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(0, 0, scaledW, rulerH);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.font = '9px "Share Tech Mono", monospace';
+    ctx.textBaseline = 'middle';
+
+    for (var m = 0; m < totalMeasures; m++) {
+      var mx = (m * measureDur / paddedDur) * scaledW;
+      var mw = (measureDur / paddedDur) * scaledW;
+
+      ctx.fillStyle = m % 2 === 0 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)';
+      ctx.fillRect(mx, rulerH, mw, totalH - rulerH);
+
+      ctx.strokeStyle = 'rgba(0,240,255,0.25)';
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(tx, 0);
-      ctx.lineTo(tx, totalH);
+      ctx.moveTo(mx, rulerH);
+      ctx.lineTo(mx, totalH);
       ctx.stroke();
+
+      ctx.fillStyle = 'rgba(0,240,255,0.5)';
+      ctx.fillText('M' + (m + 1), mx + 4, rulerH / 2);
+
+      for (var b = 1; b < ts.num; b++) {
+        var bx = mx + (b * beatDur / paddedDur) * scaledW;
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(bx, rulerH);
+        ctx.lineTo(bx, totalH);
+        ctx.stroke();
+      }
     }
 
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
     ctx.font = '10px "Share Tech Mono", monospace';
+    ctx.textBaseline = 'bottom';
     for (var tm = 0; tm <= totalDur; tm += 1) {
-      var tmx = (tm / totalDur) * scaledW;
+      var tmx = (tm / paddedDur) * scaledW;
       ctx.fillText(tm + 's', tmx + 3, totalH - 2);
     }
 
     for (var i = 0; i < notes.length; i++) {
       var n = notes[i];
-      var nx = (n.startTime / totalDur) * scaledW;
-      var nw = Math.max(4, (n.duration / totalDur) * scaledW);
+      var nx = (n.startTime / paddedDur) * scaledW;
+      var nw = Math.max(4, (n.duration / paddedDur) * scaledW);
       var ny = topPad + i * (noteH + noteGap);
 
       var color = colors[n.noteIndex % colors.length];
@@ -545,9 +598,10 @@ var SynthApp = window.SynthApp || {};
 
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.font = '9px "Share Tech Mono", monospace';
+      ctx.textBaseline = 'middle';
       var label = SynthApp.NOTE_NAMES[n.noteIndex] + ' ' + n.duration.toFixed(1) + 's';
       if (nw > 40) {
-        ctx.fillText(label, nx + 4, ny + 13);
+        ctx.fillText(label, nx + 4, ny + noteH / 2);
       }
     }
   }
@@ -557,15 +611,18 @@ var SynthApp = window.SynthApp || {};
       recorder.addSegment();
       renderSegments();
       renderTimeline();
+      updateSegmentOptions();
       selectedTimelineNote = -1;
       var panel = document.getElementById('timelineEdit');
       if (panel) panel.style.display = 'none';
+      updateQuantizeUI();
     });
 
     document.getElementById('copySegmentBtn').addEventListener('click', function() {
       recorder.copySegment(recorder.getActiveSegmentIndex());
       renderSegments();
       renderTimeline();
+      updateSegmentOptions();
     });
 
     document.getElementById('deleteSegmentBtn').addEventListener('click', function() {
@@ -573,9 +630,11 @@ var SynthApp = window.SynthApp || {};
       recorder.deleteSegment(recorder.getActiveSegmentIndex());
       renderSegments();
       renderTimeline();
+      updateSegmentOptions();
       selectedTimelineNote = -1;
       var panel = document.getElementById('timelineEdit');
       if (panel) panel.style.display = 'none';
+      updateQuantizeUI();
     });
 
     document.getElementById('loopSegmentBtn').addEventListener('click', function() {
@@ -598,8 +657,9 @@ var SynthApp = window.SynthApp || {};
       var seg = segs[i];
       var btn = document.createElement('button');
       btn.className = 'segment-tab' + (i === activeIdx ? ' active' : '');
-      btn.textContent = (i + 1) + '. ' + seg.name;
-      btn.title = seg.notes.length + ' 个音符';
+      var repLabel = seg.repeatCount > 1 ? ' x' + seg.repeatCount : '';
+      btn.textContent = seg.name + repLabel;
+      btn.title = seg.notes.length + ' 个音符 | 重复 ' + (seg.repeatCount || 1) + ' 次';
       btn.setAttribute('data-index', i);
 
       (function(idx) {
@@ -607,9 +667,19 @@ var SynthApp = window.SynthApp || {};
           recorder.setActiveSegment(idx);
           renderSegments();
           renderTimeline();
+          updateSegmentOptions();
+          updateQuantizeUI();
           selectedTimelineNote = -1;
           var panel = document.getElementById('timelineEdit');
           if (panel) panel.style.display = 'none';
+        });
+
+        btn.addEventListener('dblclick', function() {
+          var newName = prompt('重命名片段：', segs[idx].name);
+          if (newName && newName.trim()) {
+            recorder.renameSegment(idx, newName.trim());
+            renderSegments();
+          }
         });
       })(i);
 
@@ -617,24 +687,87 @@ var SynthApp = window.SynthApp || {};
     }
   }
 
+  function bindSegmentOptions() {
+    document.getElementById('moveSegUpBtn').addEventListener('click', function() {
+      recorder.moveSegmentUp(recorder.getActiveSegmentIndex());
+      renderSegments();
+      renderTimeline();
+      updateSegmentOptions();
+      updateQuantizeUI();
+    });
+
+    document.getElementById('moveSegDownBtn').addEventListener('click', function() {
+      recorder.moveSegmentDown(recorder.getActiveSegmentIndex());
+      renderSegments();
+      renderTimeline();
+      updateSegmentOptions();
+      updateQuantizeUI();
+    });
+
+    document.getElementById('renameSegBtn').addEventListener('click', function() {
+      var idx = recorder.getActiveSegmentIndex();
+      var segs = recorder.getSegments();
+      if (idx < 0 || idx >= segs.length) return;
+      var newName = prompt('重命名片段：', segs[idx].name);
+      if (newName && newName.trim()) {
+        recorder.renameSegment(idx, newName.trim());
+        renderSegments();
+      }
+    });
+
+    document.getElementById('repeatCount').addEventListener('change', function() {
+      var count = parseInt(this.value) || 1;
+      recorder.setSegmentRepeat(recorder.getActiveSegmentIndex(), count);
+      this.value = recorder.getSegmentRepeat(recorder.getActiveSegmentIndex());
+      renderSegments();
+    });
+
+    document.getElementById('playAllBtn').addEventListener('click', function() {
+      if (recorder.isPlaying()) {
+        recorder.stopPlayback();
+        highlightPlaybackKey(-1);
+      }
+      if (recorder.isRecording()) {
+        var heldKeys = getHeldNoteIndices();
+        if (heldKeys.length > 0) {
+          recorder.finalizeHeldNotes(heldKeys);
+        }
+        releaseAllKeys();
+        recorder.stopRecording();
+        renderTimeline();
+        renderSegments();
+      }
+      recorder.playAllSegments();
+    });
+  }
+
+  function updateSegmentOptions() {
+    var idx = recorder.getActiveSegmentIndex();
+    document.getElementById('repeatCount').value = recorder.getSegmentRepeat(idx);
+  }
+
   function bindQuantize() {
+    document.getElementById('bpmInput').addEventListener('change', function() {
+      var val = parseInt(this.value) || 120;
+      recorder.setBPM(val);
+      this.value = recorder.getBPM();
+      renderTimeline();
+    });
+
     document.getElementById('quantize4Btn').addEventListener('click', function() {
-      var bpm = parseInt(document.getElementById('bpmInput').value) || 120;
-      recorder.quantizeNotes(bpm, 4);
+      recorder.quantizeNotes(recorder.getBPM(), 4);
       renderTimeline();
       updateQuantizeUI();
     });
 
     document.getElementById('quantize8Btn').addEventListener('click', function() {
-      var bpm = parseInt(document.getElementById('bpmInput').value) || 120;
-      recorder.quantizeNotes(bpm, 8);
+      recorder.quantizeNotes(recorder.getBPM(), 8);
       renderTimeline();
       updateQuantizeUI();
     });
 
     document.getElementById('quantize16Btn').addEventListener('click', function() {
-      var bpm = parseInt(document.getElementById('bpmInput').value) || 120;
-      recorder.quantizeNotes(bpm, 16);
+      recorder.quantizeNotes(recorder.getBPM(), 16);
       renderTimeline();
       updateQuantizeUI();
     });
@@ -651,6 +784,39 @@ var SynthApp = window.SynthApp || {};
     undoBtn.disabled = !recorder.hasQuantizeUndo();
   }
 
+  function bindTimeSignature() {
+    document.getElementById('timesigNum').addEventListener('change', function() {
+      var num = parseInt(this.value) || 4;
+      var den = parseInt(document.getElementById('timesigDen').value) || 4;
+      recorder.setTimeSignature(num, den);
+      renderTimeline();
+    });
+
+    document.getElementById('timesigDen').addEventListener('change', function() {
+      var num = parseInt(document.getElementById('timesigNum').value) || 4;
+      var den = parseInt(this.value) || 4;
+      recorder.setTimeSignature(num, den);
+      renderTimeline();
+    });
+  }
+
+  function bindMetronome() {
+    document.getElementById('metronomeBtn').addEventListener('click', function() {
+      var isOn = !recorder.isMetronomeOn();
+      recorder.setMetronome(isOn);
+      this.classList.toggle('active', isOn);
+      if (isOn && recorder.isRecording()) {
+        recorder.startMetronome();
+      }
+    });
+
+    document.getElementById('countInBtn').addEventListener('click', function() {
+      var isOn = !recorder.isCountInOn();
+      recorder.setCountIn(isOn);
+      this.classList.toggle('active', isOn);
+    });
+  }
+
   function bindRecorder() {
     document.getElementById('recordBtn').addEventListener('click', function() {
       if (recorder.isRecording()) {
@@ -662,6 +828,9 @@ var SynthApp = window.SynthApp || {};
         recorder.stopRecording();
         renderTimeline();
         renderSegments();
+        recorder.stopMetronome();
+        document.getElementById('metronomeBtn').classList.remove('active');
+        recorder.setMetronome(false);
       } else {
         if (recorder.isPlaying()) {
           recorder.stopPlayback();
@@ -674,7 +843,7 @@ var SynthApp = window.SynthApp || {};
     });
 
     document.getElementById('stopBtn').addEventListener('click', function() {
-      if (recorder.isRecording()) {
+      if (recorder.isRecording() || recorder.isCountingInActive()) {
         var heldKeys = getHeldNoteIndices();
         if (heldKeys.length > 0) {
           recorder.finalizeHeldNotes(heldKeys);
@@ -683,6 +852,9 @@ var SynthApp = window.SynthApp || {};
         recorder.stopRecording();
         renderTimeline();
         renderSegments();
+        recorder.stopMetronome();
+        document.getElementById('metronomeBtn').classList.remove('active');
+        recorder.setMetronome(false);
       }
       if (recorder.isPlaying()) {
         recorder.stopPlayback();
@@ -711,11 +883,15 @@ var SynthApp = window.SynthApp || {};
 
     document.getElementById('clearBtn').addEventListener('click', function() {
       recorder.clearRecording();
+      recorder.stopMetronome();
+      document.getElementById('metronomeBtn').classList.remove('active');
+      recorder.setMetronome(false);
       selectedTimelineNote = -1;
       var panel = document.getElementById('timelineEdit');
       if (panel) panel.style.display = 'none';
       renderTimeline();
       renderSegments();
+      updateQuantizeUI();
     });
   }
 
@@ -742,8 +918,11 @@ var SynthApp = window.SynthApp || {};
             showImportDialog(file);
           } else {
             recorder.importJSON(file, false, function() {
+              syncSettingsFromRecorder();
               renderTimeline();
               renderSegments();
+              updateSegmentOptions();
+              updateQuantizeUI();
             });
           }
         };
@@ -765,16 +944,15 @@ var SynthApp = window.SynthApp || {};
 
       if (pendingFile) {
         recorder.importJSON(pendingFile, importTimbre, function() {
+          syncSettingsFromRecorder();
           if (importTimbre) {
-            var selKey = audioEngine.getSelectedKey();
-            if (selKey >= 0) {
-              refreshUIForKey(selKey);
-            } else {
-              refreshUIForKey(0);
-            }
+            ensureKeySelected();
+            refreshUIForKey(audioEngine.getSelectedKey());
           }
           renderTimeline();
           renderSegments();
+          updateSegmentOptions();
+          updateQuantizeUI();
         });
       }
       hideImportDialog();
@@ -801,7 +979,7 @@ var SynthApp = window.SynthApp || {};
     });
 
     progressBar.addEventListener('change', function() {
-      var total = recorder.getTotalDuration();
+      var total = recorder.isPlayingAllActive() ? recorder.getAllSegmentsDuration() : recorder.getTotalDuration();
       var seekTime = (parseFloat(progressBar.value) / 1000) * total;
       recorder.seekPlayback(seekTime);
       isSeeking = false;
@@ -817,6 +995,7 @@ var SynthApp = window.SynthApp || {};
 
     var progressBar = document.getElementById('progressBar');
     var progressTime = document.getElementById('progressTime');
+    var beatPos = document.getElementById('beatPosition');
     var progressSection = document.getElementById('playbackProgress');
 
     if (info.total > 0) {
@@ -825,6 +1004,10 @@ var SynthApp = window.SynthApp || {};
       progressBar.value = val;
       progressBar.max = 1000;
       progressTime.textContent = formatTime(info.elapsed) + ' / ' + formatTime(info.total);
+      if (info.beatPosition) {
+        beatPos.textContent = 'M' + info.beatPosition.measure + ' B' + info.beatPosition.beat;
+        beatPos.style.display = 'inline';
+      }
     }
   }
 
@@ -842,34 +1025,45 @@ var SynthApp = window.SynthApp || {};
     var indicator = document.getElementById('recIndicator');
     var statusText = document.getElementById('recStatus');
     var progressSection = document.getElementById('playbackProgress');
+    var beatPos = document.getElementById('beatPosition');
 
     recordBtn.classList.remove('recording');
     playBtn.classList.remove('playing');
     indicator.classList.remove('recording', 'playing');
 
-    if (state.recording) {
+    if (state.countingIn) {
+      indicator.classList.add('recording');
+      statusText.textContent = '倒计时...';
+      stopBtn.disabled = false;
+      progressSection.style.display = 'none';
+      beatPos.style.display = 'none';
+    } else if (state.recording) {
       recordBtn.classList.add('recording');
       indicator.classList.add('recording');
       statusText.textContent = '录制中...';
       stopBtn.disabled = false;
       progressSection.style.display = 'none';
+      beatPos.style.display = 'none';
     } else if (state.playing) {
       playBtn.classList.add('playing');
       indicator.classList.add('playing');
-      statusText.textContent = '回放中...';
+      statusText.textContent = recorder.isPlayingAllActive() ? '播放全部...' : '回放中...';
       stopBtn.disabled = false;
     } else {
       var noteCount = recorder.getRecordedNotes().length;
       var segCount = state.segmentCount || 1;
+      var allDur = recorder.getAllSegmentsDuration();
+      var durStr = allDur > 0 ? ' | ' + allDur.toFixed(1) + 's' : '';
       statusText.textContent = state.hasNotes
-        ? segCount + ' 片段 | ' + noteCount + ' 音符'
+        ? segCount + ' 片段 | ' + noteCount + ' 音符' + durStr
         : '就绪';
       stopBtn.disabled = true;
       progressSection.style.display = 'none';
+      beatPos.style.display = 'none';
       highlightPlaybackKey(-1);
     }
 
-    if (!state.recording && !state.playing) {
+    if (!state.recording && !state.playing && !state.countingIn) {
       renderTimeline();
     }
   }
