@@ -22,6 +22,8 @@ var SynthApp = window.SynthApp || {};
     bindFile();
     bindTimbrePresets();
     bindTimeline();
+    bindQuantize();
+    bindSegments();
     bindImportDialog();
     bindProgressBar();
 
@@ -30,6 +32,7 @@ var SynthApp = window.SynthApp || {};
     recorder.setOnNoteHighlight(highlightPlaybackKey);
 
     renderTimbreList();
+    renderSegments();
     renderTimeline();
   }
 
@@ -281,20 +284,27 @@ var SynthApp = window.SynthApp || {};
       if (!name || !name.trim()) return;
       name = name.trim();
 
-      var existing = timbreManager.getAllNames();
-      if (existing.indexOf(name) !== -1) {
+      var note = prompt('请输入备注说明（可选）：') || '';
+
+      var existingNames = timbreManager.getAllNames();
+      if (existingNames.indexOf(name) !== -1) {
         if (!confirm('方案 "' + name + '" 已存在，是否覆盖？')) return;
       }
 
       var allSettings = audioEngine.getAllKeySettings();
-      timbreManager.savePreset(name, allSettings);
+      timbreManager.savePreset(name, allSettings, note);
       renderTimbreList();
       document.getElementById('timbreSelect').value = name;
+      showTimbreInfo(name);
     });
 
     document.getElementById('timbreSelect').addEventListener('change', function() {
       var name = this.value;
-      if (!name) return;
+      if (!name) {
+        document.getElementById('timbreInfo').style.display = 'none';
+        document.getElementById('favoriteBtn').style.display = 'none';
+        return;
+      }
       var preset = timbreManager.getPreset(name);
       if (!preset || !preset.keySettings) return;
 
@@ -303,9 +313,9 @@ var SynthApp = window.SynthApp || {};
       var selKey = audioEngine.getSelectedKey();
       if (selKey >= 0) {
         refreshUIForKey(selKey);
-      } else {
-        refreshUIForKey(0);
       }
+
+      showTimbreInfo(name);
     });
 
     document.getElementById('deleteTimbreBtn').addEventListener('click', function() {
@@ -314,7 +324,40 @@ var SynthApp = window.SynthApp || {};
       if (!confirm('确定删除方案 "' + name + '" 吗？')) return;
       timbreManager.deletePreset(name);
       renderTimbreList();
+      document.getElementById('timbreInfo').style.display = 'none';
+      document.getElementById('favoriteBtn').style.display = 'none';
     });
+
+    document.getElementById('favoriteBtn').addEventListener('click', function() {
+      var name = document.getElementById('timbreSelect').value;
+      if (!name) return;
+      var isFav = timbreManager.toggleFavorite(name);
+      var btn = document.getElementById('favoriteBtn');
+      btn.textContent = isFav ? '\u2605' : '\u2606';
+      btn.classList.toggle('favorited', isFav);
+      renderTimbreList();
+    });
+  }
+
+  function showTimbreInfo(name) {
+    var preset = timbreManager.getPreset(name);
+    var infoDiv = document.getElementById('timbreInfo');
+    var favBtn = document.getElementById('favoriteBtn');
+
+    if (!preset) {
+      infoDiv.style.display = 'none';
+      favBtn.style.display = 'none';
+      return;
+    }
+
+    infoDiv.style.display = 'block';
+    favBtn.style.display = '';
+
+    var isFav = preset.favorite;
+    favBtn.textContent = isFav ? '\u2605' : '\u2606';
+    favBtn.classList.toggle('favorited', isFav);
+
+    infoDiv.textContent = preset.note || '无备注';
   }
 
   function renderTimbreList() {
@@ -324,14 +367,19 @@ var SynthApp = window.SynthApp || {};
 
     select.innerHTML = '<option value="">-- 选择方案 --</option>';
     for (var i = 0; i < names.length; i++) {
+      var preset = timbreManager.getPreset(names[i]);
+      var isFav = preset && preset.favorite;
       var opt = document.createElement('option');
       opt.value = names[i];
-      opt.textContent = names[i];
+      opt.textContent = (isFav ? '\u2605 ' : '') + names[i];
       select.appendChild(opt);
     }
 
     if (names.indexOf(currentVal) !== -1) {
       select.value = currentVal;
+    } else {
+      document.getElementById('timbreInfo').style.display = 'none';
+      document.getElementById('favoriteBtn').style.display = 'none';
     }
   }
 
@@ -504,6 +552,105 @@ var SynthApp = window.SynthApp || {};
     }
   }
 
+  function bindSegments() {
+    document.getElementById('addSegmentBtn').addEventListener('click', function() {
+      recorder.addSegment();
+      renderSegments();
+      renderTimeline();
+      selectedTimelineNote = -1;
+      var panel = document.getElementById('timelineEdit');
+      if (panel) panel.style.display = 'none';
+    });
+
+    document.getElementById('copySegmentBtn').addEventListener('click', function() {
+      recorder.copySegment(recorder.getActiveSegmentIndex());
+      renderSegments();
+      renderTimeline();
+    });
+
+    document.getElementById('deleteSegmentBtn').addEventListener('click', function() {
+      if (recorder.getSegments().length <= 1) return;
+      recorder.deleteSegment(recorder.getActiveSegmentIndex());
+      renderSegments();
+      renderTimeline();
+      selectedTimelineNote = -1;
+      var panel = document.getElementById('timelineEdit');
+      if (panel) panel.style.display = 'none';
+    });
+
+    document.getElementById('loopSegmentBtn').addEventListener('click', function() {
+      var isLoop = recorder.toggleLoop();
+      var btn = document.getElementById('loopSegmentBtn');
+      btn.classList.toggle('loop-active', isLoop);
+      btn.textContent = isLoop ? 'LOOP:ON' : 'LOOP';
+    });
+  }
+
+  function renderSegments() {
+    var container = document.getElementById('segmentsContainer');
+    if (!container) return;
+
+    var segs = recorder.getSegments();
+    var activeIdx = recorder.getActiveSegmentIndex();
+
+    container.innerHTML = '';
+    for (var i = 0; i < segs.length; i++) {
+      var seg = segs[i];
+      var btn = document.createElement('button');
+      btn.className = 'segment-tab' + (i === activeIdx ? ' active' : '');
+      btn.textContent = (i + 1) + '. ' + seg.name;
+      btn.title = seg.notes.length + ' 个音符';
+      btn.setAttribute('data-index', i);
+
+      (function(idx) {
+        btn.addEventListener('click', function() {
+          recorder.setActiveSegment(idx);
+          renderSegments();
+          renderTimeline();
+          selectedTimelineNote = -1;
+          var panel = document.getElementById('timelineEdit');
+          if (panel) panel.style.display = 'none';
+        });
+      })(i);
+
+      container.appendChild(btn);
+    }
+  }
+
+  function bindQuantize() {
+    document.getElementById('quantize4Btn').addEventListener('click', function() {
+      var bpm = parseInt(document.getElementById('bpmInput').value) || 120;
+      recorder.quantizeNotes(bpm, 4);
+      renderTimeline();
+      updateQuantizeUI();
+    });
+
+    document.getElementById('quantize8Btn').addEventListener('click', function() {
+      var bpm = parseInt(document.getElementById('bpmInput').value) || 120;
+      recorder.quantizeNotes(bpm, 8);
+      renderTimeline();
+      updateQuantizeUI();
+    });
+
+    document.getElementById('quantize16Btn').addEventListener('click', function() {
+      var bpm = parseInt(document.getElementById('bpmInput').value) || 120;
+      recorder.quantizeNotes(bpm, 16);
+      renderTimeline();
+      updateQuantizeUI();
+    });
+
+    document.getElementById('undoQuantizeBtn').addEventListener('click', function() {
+      recorder.undoQuantize();
+      renderTimeline();
+      updateQuantizeUI();
+    });
+  }
+
+  function updateQuantizeUI() {
+    var undoBtn = document.getElementById('undoQuantizeBtn');
+    undoBtn.disabled = !recorder.hasQuantizeUndo();
+  }
+
   function bindRecorder() {
     document.getElementById('recordBtn').addEventListener('click', function() {
       if (recorder.isRecording()) {
@@ -514,6 +661,7 @@ var SynthApp = window.SynthApp || {};
         releaseAllKeys();
         recorder.stopRecording();
         renderTimeline();
+        renderSegments();
       } else {
         if (recorder.isPlaying()) {
           recorder.stopPlayback();
@@ -534,6 +682,7 @@ var SynthApp = window.SynthApp || {};
         releaseAllKeys();
         recorder.stopRecording();
         renderTimeline();
+        renderSegments();
       }
       if (recorder.isPlaying()) {
         recorder.stopPlayback();
@@ -554,6 +703,7 @@ var SynthApp = window.SynthApp || {};
           releaseAllKeys();
           recorder.stopRecording();
           renderTimeline();
+          renderSegments();
         }
         recorder.playRecording();
       }
@@ -565,6 +715,7 @@ var SynthApp = window.SynthApp || {};
       var panel = document.getElementById('timelineEdit');
       if (panel) panel.style.display = 'none';
       renderTimeline();
+      renderSegments();
     });
   }
 
@@ -590,8 +741,10 @@ var SynthApp = window.SynthApp || {};
           if (data && data.keySettings && Array.isArray(data.keySettings) && data.keySettings.length >= 8) {
             showImportDialog(file);
           } else {
-            recorder.importJSON(file, false);
-            renderTimeline();
+            recorder.importJSON(file, false, function() {
+              renderTimeline();
+              renderSegments();
+            });
           }
         };
         reader.readAsText(file);
@@ -611,18 +764,18 @@ var SynthApp = window.SynthApp || {};
       var pendingFile = document.getElementById('importDialog')._pendingFile;
 
       if (pendingFile) {
-        recorder.importJSON(pendingFile, importTimbre);
-
-        if (importTimbre) {
-          var selKey = audioEngine.getSelectedKey();
-          if (selKey >= 0) {
-            refreshUIForKey(selKey);
-          } else {
-            refreshUIForKey(0);
+        recorder.importJSON(pendingFile, importTimbre, function() {
+          if (importTimbre) {
+            var selKey = audioEngine.getSelectedKey();
+            if (selKey >= 0) {
+              refreshUIForKey(selKey);
+            } else {
+              refreshUIForKey(0);
+            }
           }
-        }
-
-        renderTimeline();
+          renderTimeline();
+          renderSegments();
+        });
       }
       hideImportDialog();
     });
@@ -706,7 +859,11 @@ var SynthApp = window.SynthApp || {};
       statusText.textContent = '回放中...';
       stopBtn.disabled = false;
     } else {
-      statusText.textContent = state.hasNotes ? '已录制 ' + recorder.getRecordedNotes().length + ' 个音符' : '就绪';
+      var noteCount = recorder.getRecordedNotes().length;
+      var segCount = state.segmentCount || 1;
+      statusText.textContent = state.hasNotes
+        ? segCount + ' 片段 | ' + noteCount + ' 音符'
+        : '就绪';
       stopBtn.disabled = true;
       progressSection.style.display = 'none';
       highlightPlaybackKey(-1);

@@ -3,19 +3,28 @@ var SynthApp = window.SynthApp || {};
 SynthApp.Recorder = (function() {
   var recording = false;
   var playing = false;
-  var recordedNotes = [];
+  var segments = [{ id: 0, name: '片段 1', notes: [] }];
+  var activeSegmentIndex = 0;
+  var isLooping = false;
   var recordingStartTime = 0;
   var playbackTimer = null;
   var playbackNodes = [];
   var playbackStartCtxTime = 0;
   var playbackTotalDuration = 0;
+  var playbackSeekOffset = 0;
   var playbackProgressTimer = null;
   var onStateChange = null;
   var onProgressUpdate = null;
   var onNoteHighlight = null;
+  var quantizeBackup = null;
+  var nextSegmentId = 1;
+
+  function getActiveNotes() {
+    return segments[activeSegmentIndex].notes;
+  }
 
   function startRecording() {
-    recordedNotes = [];
+    getActiveNotes().length = 0;
     recordingStartTime = performance.now() / 1000;
     recording = true;
     notifyState();
@@ -31,7 +40,7 @@ SynthApp.Recorder = (function() {
     var now = performance.now() / 1000;
     var startTime = now - recordingStartTime;
 
-    recordedNotes.push({
+    getActiveNotes().push({
       noteIndex: noteIndex,
       frequency: SynthApp.NOTE_FREQUENCIES[noteIndex],
       startTime: startTime,
@@ -44,11 +53,12 @@ SynthApp.Recorder = (function() {
     if (!recording) return;
     var now = performance.now() / 1000;
     var endTime = now - recordingStartTime;
+    var notes = getActiveNotes();
 
-    for (var i = recordedNotes.length - 1; i >= 0; i--) {
-      if (recordedNotes[i].noteIndex === noteIndex && !recordedNotes[i].noteOff) {
-        recordedNotes[i].duration = endTime - recordedNotes[i].startTime;
-        recordedNotes[i].noteOff = true;
+    for (var i = notes.length - 1; i >= 0; i--) {
+      if (notes[i].noteIndex === noteIndex && !notes[i].noteOff) {
+        notes[i].duration = endTime - notes[i].startTime;
+        notes[i].noteOff = true;
         break;
       }
     }
@@ -58,13 +68,14 @@ SynthApp.Recorder = (function() {
     if (!recording) return;
     var now = performance.now() / 1000;
     var endTime = now - recordingStartTime;
+    var notes = getActiveNotes();
 
     for (var j = 0; j < heldNoteIndices.length; j++) {
       var noteIndex = heldNoteIndices[j];
-      for (var i = recordedNotes.length - 1; i >= 0; i--) {
-        if (recordedNotes[i].noteIndex === noteIndex && !recordedNotes[i].noteOff) {
-          recordedNotes[i].duration = Math.max(0.01, endTime - recordedNotes[i].startTime);
-          recordedNotes[i].noteOff = true;
+      for (var i = notes.length - 1; i >= 0; i--) {
+        if (notes[i].noteIndex === noteIndex && !notes[i].noteOff) {
+          notes[i].duration = Math.max(0.01, endTime - notes[i].startTime);
+          notes[i].noteOff = true;
           break;
         }
       }
@@ -73,15 +84,17 @@ SynthApp.Recorder = (function() {
 
   function getTotalDuration() {
     var maxEnd = 0;
-    for (var i = 0; i < recordedNotes.length; i++) {
-      var end = recordedNotes[i].startTime + recordedNotes[i].duration;
+    var notes = getActiveNotes();
+    for (var i = 0; i < notes.length; i++) {
+      var end = notes[i].startTime + notes[i].duration;
       if (end > maxEnd) maxEnd = end;
     }
     return maxEnd;
   }
 
   function playRecording(seekOffset) {
-    if (recordedNotes.length === 0) return;
+    var notes = getActiveNotes();
+    if (notes.length === 0) return;
     if (playing) return;
 
     SynthApp.AudioEngine.init();
@@ -96,12 +109,13 @@ SynthApp.Recorder = (function() {
     var offset = seekOffset || 0;
     var totalDur = getTotalDuration();
     playbackTotalDuration = totalDur;
+    playbackSeekOffset = offset;
     playbackStartCtxTime = audioCtx.currentTime;
 
     var now = audioCtx.currentTime;
 
-    for (var i = 0; i < recordedNotes.length; i++) {
-      var note = recordedNotes[i];
+    for (var i = 0; i < notes.length; i++) {
+      var note = notes[i];
       var noteEnd = note.startTime + note.duration;
       if (noteEnd <= offset) continue;
 
@@ -117,9 +131,45 @@ SynthApp.Recorder = (function() {
     if (totalDur > offset) {
       var remaining = (totalDur - offset) * 1000 + 500;
       playbackTimer = setTimeout(function() {
-        stopPlayback();
+        if (isLooping && playing) {
+          loopRestart();
+        } else {
+          stopPlayback();
+        }
       }, remaining);
     }
+  }
+
+  function loopRestart() {
+    destroyPlaybackNodes();
+    stopProgressTracking();
+
+    var audioCtx = SynthApp.AudioEngine.getAudioContext();
+    if (!audioCtx) return;
+    var totalDur = getTotalDuration();
+    playbackTotalDuration = totalDur;
+    playbackSeekOffset = 0;
+    playbackStartCtxTime = audioCtx.currentTime;
+
+    var now = audioCtx.currentTime;
+    var notes = getActiveNotes();
+
+    for (var i = 0; i < notes.length; i++) {
+      var note = notes[i];
+      var startTime = now + note.startTime;
+      var endTime = startTime + note.duration;
+      scheduleNotePlayback(note.noteIndex, note.frequency, startTime, endTime);
+    }
+
+    startProgressTracking();
+
+    playbackTimer = setTimeout(function() {
+      if (isLooping && playing) {
+        loopRestart();
+      } else {
+        stopPlayback();
+      }
+    }, totalDur * 1000 + 500);
   }
 
   function scheduleNotePlayback(noteIndex, frequency, startTime, endTime) {
@@ -240,7 +290,7 @@ SynthApp.Recorder = (function() {
     var audioCtx = SynthApp.AudioEngine.getAudioContext();
     if (!audioCtx) return;
 
-    var elapsed = audioCtx.currentTime - playbackStartCtxTime;
+    var elapsed = playbackSeekOffset + (audioCtx.currentTime - playbackStartCtxTime);
     var total = playbackTotalDuration;
 
     if (onProgressUpdate) {
@@ -257,13 +307,18 @@ SynthApp.Recorder = (function() {
     }
 
     if (elapsed >= total + 0.5) {
-      stopPlayback();
+      if (isLooping && playing) {
+        loopRestart();
+      } else {
+        stopPlayback();
+      }
     }
   }
 
   function findCurrentNote(elapsed) {
-    for (var i = 0; i < recordedNotes.length; i++) {
-      var n = recordedNotes[i];
+    var notes = getActiveNotes();
+    for (var i = 0; i < notes.length; i++) {
+      var n = notes[i];
       if (elapsed >= n.startTime && elapsed < n.startTime + n.duration) {
         return n.noteIndex;
       }
@@ -295,7 +350,7 @@ SynthApp.Recorder = (function() {
 
   function clearRecording() {
     stopPlayback();
-    recordedNotes = [];
+    getActiveNotes().length = 0;
     recording = false;
     notifyState();
   }
@@ -308,39 +363,151 @@ SynthApp.Recorder = (function() {
     return playing;
   }
 
+  function isLoopingActive() {
+    return isLooping;
+  }
+
+  function toggleLoop() {
+    isLooping = !isLooping;
+    return isLooping;
+  }
+
   function getRecordedNotes() {
-    return recordedNotes;
+    return getActiveNotes();
   }
 
   function updateNote(index, params) {
-    if (index < 0 || index >= recordedNotes.length) return;
-    if (params.startTime !== undefined) recordedNotes[index].startTime = params.startTime;
-    if (params.duration !== undefined) recordedNotes[index].duration = params.duration;
+    var notes = getActiveNotes();
+    if (index < 0 || index >= notes.length) return;
+    if (params.startTime !== undefined) notes[index].startTime = params.startTime;
+    if (params.duration !== undefined) notes[index].duration = params.duration;
     if (params.noteIndex !== undefined) {
-      recordedNotes[index].noteIndex = params.noteIndex;
-      recordedNotes[index].frequency = SynthApp.NOTE_FREQUENCIES[params.noteIndex];
+      notes[index].noteIndex = params.noteIndex;
+      notes[index].frequency = SynthApp.NOTE_FREQUENCIES[params.noteIndex];
     }
     notifyState();
   }
 
   function deleteNote(index) {
-    if (index < 0 || index >= recordedNotes.length) return;
-    recordedNotes.splice(index, 1);
+    var notes = getActiveNotes();
+    if (index < 0 || index >= notes.length) return;
+    notes.splice(index, 1);
+    notifyState();
+  }
+
+  function quantizeNotes(bpm, gridDivision) {
+    var notes = getActiveNotes();
+    if (notes.length === 0) return;
+
+    quantizeBackup = notes.map(function(n) {
+      return {
+        noteIndex: n.noteIndex,
+        frequency: n.frequency,
+        startTime: n.startTime,
+        duration: n.duration,
+        noteOff: n.noteOff
+      };
+    });
+
+    var beatDuration = 60 / bpm;
+    var gridSize = beatDuration / gridDivision;
+
+    for (var i = 0; i < notes.length; i++) {
+      var n = notes[i];
+      n.startTime = Math.round(n.startTime / gridSize) * gridSize;
+      n.duration = Math.max(gridSize, Math.round(n.duration / gridSize) * gridSize);
+    }
+
+    notifyState();
+  }
+
+  function undoQuantize() {
+    if (!quantizeBackup) return;
+    var notes = getActiveNotes();
+    notes.length = 0;
+    for (var i = 0; i < quantizeBackup.length; i++) {
+      notes.push(quantizeBackup[i]);
+    }
+    quantizeBackup = null;
+    notifyState();
+  }
+
+  function hasQuantizeUndo() {
+    return quantizeBackup !== null;
+  }
+
+  function getSegments() {
+    return segments;
+  }
+
+  function getActiveSegmentIndex() {
+    return activeSegmentIndex;
+  }
+
+  function setActiveSegment(index) {
+    if (index >= 0 && index < segments.length) {
+      activeSegmentIndex = index;
+      notifyState();
+    }
+  }
+
+  function addSegment() {
+    var name = '片段 ' + (segments.length + 1);
+    segments.push({ id: nextSegmentId, name: name, notes: [] });
+    nextSegmentId++;
+    activeSegmentIndex = segments.length - 1;
+    notifyState();
+  }
+
+  function copySegment(index) {
+    if (index < 0 || index >= segments.length) return;
+    var src = segments[index];
+    var newSeg = {
+      id: nextSegmentId,
+      name: src.name + ' (副本)',
+      notes: src.notes.map(function(n) {
+        return {
+          noteIndex: n.noteIndex,
+          frequency: n.frequency,
+          startTime: n.startTime,
+          duration: n.duration,
+          noteOff: n.noteOff
+        };
+      })
+    };
+    nextSegmentId++;
+    segments.splice(index + 1, 0, newSeg);
+    activeSegmentIndex = index + 1;
+    notifyState();
+  }
+
+  function deleteSegment(index) {
+    if (segments.length <= 1) return;
+    if (index < 0 || index >= segments.length) return;
+    segments.splice(index, 1);
+    if (activeSegmentIndex >= segments.length) {
+      activeSegmentIndex = segments.length - 1;
+    }
     notifyState();
   }
 
   function exportJSON() {
     var keySettings = SynthApp.AudioEngine.getAllKeySettings();
     var data = {
-      version: '2.0',
+      version: '3.0',
       createdAt: new Date().toISOString(),
       keySettings: keySettings,
-      notes: recordedNotes.map(function(n) {
+      segments: segments.map(function(seg) {
         return {
-          noteIndex: n.noteIndex,
-          frequency: n.frequency,
-          startTime: n.startTime,
-          duration: n.duration
+          name: seg.name,
+          notes: seg.notes.map(function(n) {
+            return {
+              noteIndex: n.noteIndex,
+              frequency: n.frequency,
+              startTime: n.startTime,
+              duration: n.duration
+            };
+          })
         };
       })
     };
@@ -358,17 +525,36 @@ SynthApp.Recorder = (function() {
 
   function validateImportData(data) {
     if (!data || typeof data !== 'object') return false;
-    if (!Array.isArray(data.notes)) return false;
-    if (data.notes.length === 0) return false;
 
-    for (var i = 0; i < data.notes.length; i++) {
-      var n = data.notes[i];
-      if (typeof n.noteIndex !== 'number' || n.noteIndex < 0 || n.noteIndex > 7) return false;
-      if (typeof n.frequency !== 'number' || n.frequency <= 0) return false;
-      if (typeof n.startTime !== 'number' || n.startTime < 0) return false;
-      if (typeof n.duration !== 'number' || n.duration <= 0) return false;
+    if (data.segments && Array.isArray(data.segments)) {
+      if (data.segments.length === 0) return false;
+      for (var s = 0; s < data.segments.length; s++) {
+        var seg = data.segments[s];
+        if (!Array.isArray(seg.notes)) return false;
+        for (var i = 0; i < seg.notes.length; i++) {
+          var n = seg.notes[i];
+          if (typeof n.noteIndex !== 'number' || n.noteIndex < 0 || n.noteIndex > 7) return false;
+          if (typeof n.frequency !== 'number' || n.frequency <= 0) return false;
+          if (typeof n.startTime !== 'number' || n.startTime < 0) return false;
+          if (typeof n.duration !== 'number' || n.duration <= 0) return false;
+        }
+      }
+      return true;
     }
-    return true;
+
+    if (Array.isArray(data.notes)) {
+      if (data.notes.length === 0) return false;
+      for (var j = 0; j < data.notes.length; j++) {
+        var note = data.notes[j];
+        if (typeof note.noteIndex !== 'number' || note.noteIndex < 0 || note.noteIndex > 7) return false;
+        if (typeof note.frequency !== 'number' || note.frequency <= 0) return false;
+        if (typeof note.startTime !== 'number' || note.startTime < 0) return false;
+        if (typeof note.duration !== 'number' || note.duration <= 0) return false;
+      }
+      return true;
+    }
+
+    return false;
   }
 
   function validateKeySettings(settings) {
@@ -384,40 +570,69 @@ SynthApp.Recorder = (function() {
     return true;
   }
 
-  function importJSON(file, importTimbre) {
+  function importJSON(file, importTimbre, onComplete) {
     var reader = new FileReader();
     reader.onload = function(e) {
       try {
         var data = JSON.parse(e.target.result);
         if (!validateImportData(data)) {
           console.warn('导入失败：JSON 文件格式不正确或内容无效，原有录音保持不变');
+          if (onComplete) onComplete();
           return;
         }
 
-        var parsedNotes = data.notes.map(function(n) {
-          return {
-            noteIndex: n.noteIndex,
-            frequency: n.frequency,
-            startTime: n.startTime,
-            duration: n.duration,
-            noteOff: true
-          };
-        });
-
         stopPlayback();
-        recordedNotes = parsedNotes;
+
+        if (data.segments && Array.isArray(data.segments)) {
+          segments = data.segments.map(function(seg, idx) {
+            return {
+              id: idx,
+              name: seg.name || ('片段 ' + (idx + 1)),
+              notes: seg.notes.map(function(n) {
+                return {
+                  noteIndex: n.noteIndex,
+                  frequency: n.frequency,
+                  startTime: n.startTime,
+                  duration: n.duration,
+                  noteOff: true
+                };
+              })
+            };
+          });
+          nextSegmentId = segments.length;
+          activeSegmentIndex = 0;
+        } else if (data.notes && Array.isArray(data.notes)) {
+          segments = [{
+            id: 0,
+            name: '片段 1',
+            notes: data.notes.map(function(n) {
+              return {
+                noteIndex: n.noteIndex,
+                frequency: n.frequency,
+                startTime: n.startTime,
+                duration: n.duration,
+                noteOff: true
+              };
+            })
+          }];
+          nextSegmentId = 1;
+          activeSegmentIndex = 0;
+        }
 
         if (importTimbre && data.keySettings && validateKeySettings(data.keySettings)) {
           SynthApp.AudioEngine.restoreAllKeySettings(data.keySettings);
         }
 
         notifyState();
+        if (onComplete) onComplete();
       } catch (err) {
         console.warn('导入失败：JSON 解析错误，原有录音保持不变');
+        if (onComplete) onComplete();
       }
     };
     reader.onerror = function() {
       console.warn('导入失败：无法读取文件，原有录音保持不变');
+      if (onComplete) onComplete();
     };
     reader.readAsText(file);
   }
@@ -439,7 +654,9 @@ SynthApp.Recorder = (function() {
       onStateChange({
         recording: recording,
         playing: playing,
-        hasNotes: recordedNotes.length > 0
+        hasNotes: getActiveNotes().length > 0,
+        segmentCount: segments.length,
+        activeSegment: activeSegmentIndex
       });
     }
   }
@@ -456,10 +673,21 @@ SynthApp.Recorder = (function() {
     clearRecording: clearRecording,
     isRecording: isRecording,
     isPlaying: isPlaying,
+    isLoopingActive: isLoopingActive,
+    toggleLoop: toggleLoop,
     getRecordedNotes: getRecordedNotes,
     getTotalDuration: getTotalDuration,
     updateNote: updateNote,
     deleteNote: deleteNote,
+    quantizeNotes: quantizeNotes,
+    undoQuantize: undoQuantize,
+    hasQuantizeUndo: hasQuantizeUndo,
+    getSegments: getSegments,
+    getActiveSegmentIndex: getActiveSegmentIndex,
+    setActiveSegment: setActiveSegment,
+    addSegment: addSegment,
+    copySegment: copySegment,
+    deleteSegment: deleteSegment,
     exportJSON: exportJSON,
     importJSON: importJSON,
     setOnStateChange: setOnStateChange,

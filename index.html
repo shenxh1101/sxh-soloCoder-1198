@@ -152,6 +152,10 @@
           <select id="timbreSelect" class="timbre-select">
             <option value="">-- 选择方案 --</option>
           </select>
+          <div class="timbre-info-line">
+            <button id="favoriteBtn" class="favorite-btn" style="display:none">&#9734;</button>
+            <span id="timbreInfo" class="timbre-info-text" style="display:none"></span>
+          </div>
           <div class="timbre-buttons">
             <button id="saveTimbreBtn" class="timbre-action-btn">保存方案</button>
             <button id="deleteTimbreBtn" class="timbre-action-btn timbre-delete">删除</button>
@@ -187,6 +191,24 @@
 
       <section class="control-panel timeline-panel">
         <h3 class="panel-title">TIMELINE EDITOR</h3>
+        <div class="segments-bar">
+          <div class="segments-tabs" id="segmentsContainer"></div>
+          <div class="segments-actions">
+            <button id="addSegmentBtn" class="segment-action-btn" title="新建片段">+</button>
+            <button id="copySegmentBtn" class="segment-action-btn" title="复制片段">⧉</button>
+            <button id="deleteSegmentBtn" class="segment-action-btn segment-del" title="删除片段">×</button>
+            <button id="loopSegmentBtn" class="segment-action-btn" title="循环播放">LOOP</button>
+          </div>
+        </div>
+        <div class="quantize-bar">
+          <span class="quantize-label">量化:</span>
+          <input type="number" id="bpmInput" class="bpm-input" value="120" min="40" max="300" step="1" title="BPM">
+          <span class="quantize-label">BPM</span>
+          <button id="quantize4Btn" class="quantize-btn">1/4</button>
+          <button id="quantize8Btn" class="quantize-btn">1/8</button>
+          <button id="quantize16Btn" class="quantize-btn">1/16</button>
+          <button id="undoQuantizeBtn" class="quantize-btn quantize-undo" disabled>撤销</button>
+        </div>
         <div class="timeline-wrap" id="timelineWrap">
           <canvas id="timelineCanvas" class="timeline-canvas"></canvas>
         </div>

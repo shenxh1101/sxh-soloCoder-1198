@@ -23,17 +23,25 @@ SynthApp.TimbreManager = (function() {
   }
 
   function getAllNames() {
-    return Object.keys(presets).sort();
+    return Object.keys(presets).sort(function(a, b) {
+      var fa = presets[a].favorite ? 0 : 1;
+      var fb = presets[b].favorite ? 0 : 1;
+      if (fa !== fb) return fa - fb;
+      return a.localeCompare(b);
+    });
   }
 
   function getPreset(name) {
     return presets[name] || null;
   }
 
-  function savePreset(name, keySettings) {
+  function savePreset(name, keySettings, note) {
+    var existing = presets[name];
     presets[name] = {
       name: name,
       createdAt: new Date().toISOString(),
+      note: note || (existing ? existing.note : ''),
+      favorite: existing ? existing.favorite : false,
       keySettings: keySettings.map(function(ks) {
         return {
           waveform: ks.waveform,
@@ -52,13 +60,17 @@ SynthApp.TimbreManager = (function() {
     save();
   }
 
-  function renamePreset(oldName, newName) {
-    if (!presets[oldName] || presets[newName]) return false;
-    presets[newName] = presets[oldName];
-    presets[newName].name = newName;
-    delete presets[oldName];
+  function toggleFavorite(name) {
+    if (!presets[name]) return false;
+    presets[name].favorite = !presets[name].favorite;
     save();
-    return true;
+    return presets[name].favorite;
+  }
+
+  function updateNote(name, note) {
+    if (!presets[name]) return;
+    presets[name].note = note;
+    save();
   }
 
   load();
@@ -69,6 +81,7 @@ SynthApp.TimbreManager = (function() {
     getPreset: getPreset,
     savePreset: savePreset,
     deletePreset: deletePreset,
-    renamePreset: renamePreset
+    toggleFavorite: toggleFavorite,
+    updateNote: updateNote
   };
 })();
