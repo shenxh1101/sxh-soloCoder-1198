@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SYNTH-X1 虚拟合成器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="synth-container">
+    <header class="synth-header">
+      <div class="brand-line"></div>
+      <h1 class="synth-title">SYNTH<span class="title-accent">-</span>X1</h1>
+      <p class="synth-subtitle">VIRTUAL ANALOG SYNTHESIZER</p>
+      <div class="brand-line"></div>
+    </header>
+
+    <section class="oscilloscope-section">
+      <div class="scope-panel">
+        <div class="scope-label">OSCILLOSCOPE</div>
+        <canvas id="oscilloscope" class="scope-canvas"></canvas>
+      </div>
+    </section>
+
+    <section class="keyboard-section">
+      <div class="keys-container" id="keysContainer">
+        <button class="key-btn" data-note="0" data-key="1">
+          <span class="key-note">C4</span>
+          <span class="key-hint">1</span>
+        </button>
+        <button class="key-btn" data-note="1" data-key="2">
+          <span class="key-note">D4</span>
+          <span class="key-hint">2</span>
+        </button>
+        <button class="key-btn" data-note="2" data-key="3">
+          <span class="key-note">E4</span>
+          <span class="key-hint">3</span>
+        </button>
+        <button class="key-btn" data-note="3" data-key="4">
+          <span class="key-note">F4</span>
+          <span class="key-hint">4</span>
+        </button>
+        <button class="key-btn" data-note="4" data-key="5">
+          <span class="key-note">G4</span>
+          <span class="key-hint">5</span>
+        </button>
+        <button class="key-btn" data-note="5" data-key="6">
+          <span class="key-note">A4</span>
+          <span class="key-hint">6</span>
+        </button>
+        <button class="key-btn" data-note="6" data-key="7">
+          <span class="key-note">B4</span>
+          <span class="key-hint">7</span>
+        </button>
+        <button class="key-btn" data-note="7" data-key="8">
+          <span class="key-note">C5</span>
+          <span class="key-hint">8</span>
+        </button>
+      </div>
+    </section>
+
+    <div class="controls-grid">
+      <section class="control-panel waveform-panel">
+        <h3 class="panel-title">WAVEFORM</h3>
+        <div class="waveform-options" id="waveformOptions">
+          <button class="wave-btn active" data-wave="sine">
+            <span class="wave-icon sine-icon"></span>
+            <span class="wave-name">SINE</span>
+          </button>
+          <button class="wave-btn" data-wave="square">
+            <span class="wave-icon square-icon"></span>
+            <span class="wave-name">SQUARE</span>
+          </button>
+          <button class="wave-btn" data-wave="sawtooth">
+            <span class="wave-icon saw-icon"></span>
+            <span class="wave-name">SAW</span>
+          </button>
+          <button class="wave-btn" data-wave="triangle">
+            <span class="wave-icon tri-icon"></span>
+            <span class="wave-name">TRI</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="control-panel adsr-panel">
+        <h3 class="panel-title">ADSR ENVELOPE</h3>
+        <div class="adsr-sliders">
+          <div class="slider-group">
+            <label class="slider-label">ATTACK</label>
+            <input type="range" id="attack" class="adsr-slider" min="0" max="200" value="1" step="1">
+            <span class="slider-value" id="attackVal">0.01s</span>
+          </div>
+          <div class="slider-group">
+            <label class="slider-label">DECAY</label>
+            <input type="range" id="decay" class="adsr-slider" min="0" max="200" value="10" step="1">
+            <span class="slider-value" id="decayVal">0.10s</span>
+          </div>
+          <div class="slider-group">
+            <label class="slider-label">SUSTAIN</label>
+            <input type="range" id="sustain" class="adsr-slider" min="0" max="100" value="80" step="1">
+            <span class="slider-value" id="sustainVal">0.80</span>
+          </div>
+          <div class="slider-group">
+            <label class="slider-label">RELEASE</label>
+            <input type="range" id="release" class="adsr-slider" min="0" max="200" value="20" step="1">
+            <span class="slider-value" id="releaseVal">0.20s</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="control-panel preset-panel">
+        <h3 class="panel-title">PRESETS</h3>
+        <div class="preset-buttons" id="presetButtons">
+          <button class="preset-btn" data-preset="piano">PIANO</button>
+          <button class="preset-btn" data-preset="organ">ORGAN</button>
+          <button class="preset-btn" data-preset="electronic">ELECTRONIC</button>
+        </div>
+      </section>
+
+      <section class="control-panel effects-panel">
+        <h3 class="panel-title">EFFECTS</h3>
+        <div class="effects-sliders">
+          <div class="slider-group">
+            <label class="slider-label">REVERB</label>
+            <input type="range" id="reverbMix" class="effect-slider" min="0" max="100" value="30" step="1">
+            <span class="slider-value" id="reverbMixVal">30%</span>
+          </div>
+          <div class="slider-group">
+            <label class="slider-label">DELAY MIX</label>
+            <input type="range" id="delayMix" class="effect-slider" min="0" max="100" value="20" step="1">
+            <span class="slider-value" id="delayMixVal">20%</span>
+          </div>
+          <div class="slider-group">
+            <label class="slider-label">DELAY TIME</label>
+            <input type="range" id="delayTime" class="effect-slider" min="5" max="100" value="30" step="1">
+            <span class="slider-value" id="delayTimeVal">0.30s</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="control-panel recorder-panel">
+        <h3 class="panel-title">RECORDER</h3>
+        <div class="recorder-controls">
+          <button id="recordBtn" class="rec-btn rec-record" title="录制">
+            <span class="rec-icon">⏺</span>
+          </button>
+          <button id="stopBtn" class="rec-btn rec-stop" title="停止" disabled>
+            <span class="rec-icon">⏹</span>
+          </button>
+          <button id="playBtn" class="rec-btn rec-play" title="回放">
+            <span class="rec-icon">▶</span>
+          </button>
+          <button id="clearBtn" class="rec-btn rec-clear" title="清除">
+            <span class="rec-icon">✕</span>
+          </button>
+        </div>
+        <div class="recorder-status">
+          <span id="recIndicator" class="rec-indicator"></span>
+          <span id="recStatus" class="rec-status-text">就绪</span>
+        </div>
+        <div class="file-controls">
+          <button id="exportBtn" class="file-btn">导出 JSON</button>
+          <button id="importBtn" class="file-btn">导入 JSON</button>
+        </div>
+      </section>
+    </div>
+
+    <footer class="synth-footer">
+      <span>按下键盘 1-8 演奏 | 点击琴键或使用鼠标</span>
+    </footer>
+  </div>
+
+  <input type="file" id="importFile" accept=".json" style="display:none">
+
+  <script src="js/presets.js"></script>
+  <script src="js/audioEngine.js"></script>
+  <script src="js/oscilloscope.js"></script>
+  <script src="js/recorder.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
