@@ -28,6 +28,7 @@ var SynthApp = window.SynthApp || {};
       btn.addEventListener('mousedown', function(e) {
         e.preventDefault();
         var noteIndex = parseInt(btn.getAttribute('data-note'));
+        selectKey(noteIndex);
         pressKey(noteIndex);
       });
 
@@ -47,6 +48,7 @@ var SynthApp = window.SynthApp || {};
       btn.addEventListener('touchstart', function(e) {
         e.preventDefault();
         var noteIndex = parseInt(btn.getAttribute('data-note'));
+        selectKey(noteIndex);
         pressKey(noteIndex);
       });
 
@@ -62,6 +64,7 @@ var SynthApp = window.SynthApp || {};
       var key = e.key;
       var noteIndex = keyToNoteIndex(key);
       if (noteIndex !== -1 && !pressedKeys[noteIndex]) {
+        selectKey(noteIndex);
         pressKey(noteIndex);
       }
     });
@@ -78,6 +81,41 @@ var SynthApp = window.SynthApp || {};
   function keyToNoteIndex(key) {
     var map = { '1': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7 };
     return map[key] !== undefined ? map[key] : -1;
+  }
+
+  function selectKey(noteIndex) {
+    audioEngine.selectKey(noteIndex);
+
+    var allKeys = document.querySelectorAll('.key-btn');
+    allKeys.forEach(function(k) { k.classList.remove('selected'); });
+
+    var btn = document.querySelector('.key-btn[data-note="' + noteIndex + '"]');
+    if (btn) btn.classList.add('selected');
+
+    refreshUIForKey(noteIndex);
+  }
+
+  function refreshUIForKey(noteIndex) {
+    var ks = audioEngine.getKeySettings(noteIndex);
+    if (!ks) return;
+
+    document.getElementById('attack').value = Math.round(ks.attack * 100);
+    document.getElementById('decay').value = Math.round(ks.decay * 100);
+    document.getElementById('sustain').value = Math.round(ks.sustain * 100);
+    document.getElementById('release').value = Math.round(ks.release * 100);
+
+    document.getElementById('attackVal').textContent = ks.attack.toFixed(2) + 's';
+    document.getElementById('decayVal').textContent = ks.decay.toFixed(2) + 's';
+    document.getElementById('sustainVal').textContent = ks.sustain.toFixed(2);
+    document.getElementById('releaseVal').textContent = ks.release.toFixed(2) + 's';
+
+    var waveButtons = document.querySelectorAll('.wave-btn');
+    waveButtons.forEach(function(b) {
+      b.classList.remove('active');
+      if (b.getAttribute('data-wave') === ks.waveform) {
+        b.classList.add('active');
+      }
+    });
   }
 
   function pressKey(noteIndex) {
@@ -107,6 +145,24 @@ var SynthApp = window.SynthApp || {};
 
     if (recorder.isRecording()) {
       recorder.recordNoteOff(noteIndex);
+    }
+  }
+
+  function getHeldNoteIndices() {
+    var held = [];
+    for (var i = 0; i < 8; i++) {
+      if (pressedKeys[i]) {
+        held.push(i);
+      }
+    }
+    return held;
+  }
+
+  function releaseAllKeys() {
+    for (var i = 0; i < 8; i++) {
+      if (pressedKeys[i]) {
+        releaseKey(i);
+      }
     }
   }
 
@@ -180,31 +236,18 @@ var SynthApp = window.SynthApp || {};
         var preset = SynthApp.Presets[presetName];
         if (!preset) return;
 
-        audioEngine.setWaveform(preset.waveform);
-        audioEngine.setADSR({
+        audioEngine.setAllKeySettings({
+          waveform: preset.waveform,
           attack: preset.attack,
           decay: preset.decay,
           sustain: preset.sustain,
           release: preset.release
         });
 
-        document.getElementById('attack').value = Math.round(preset.attack * 100);
-        document.getElementById('decay').value = Math.round(preset.decay * 100);
-        document.getElementById('sustain').value = Math.round(preset.sustain * 100);
-        document.getElementById('release').value = Math.round(preset.release * 100);
-
-        document.getElementById('attackVal').textContent = preset.attack.toFixed(2) + 's';
-        document.getElementById('decayVal').textContent = preset.decay.toFixed(2) + 's';
-        document.getElementById('sustainVal').textContent = preset.sustain.toFixed(2);
-        document.getElementById('releaseVal').textContent = preset.release.toFixed(2) + 's';
-
-        var waveButtons = document.querySelectorAll('.wave-btn');
-        waveButtons.forEach(function(b) {
-          b.classList.remove('active');
-          if (b.getAttribute('data-wave') === preset.waveform) {
-            b.classList.add('active');
-          }
-        });
+        var selKey = audioEngine.getSelectedKey();
+        if (selKey >= 0) {
+          refreshUIForKey(selKey);
+        }
       });
     });
   }
@@ -212,6 +255,11 @@ var SynthApp = window.SynthApp || {};
   function bindRecorder() {
     document.getElementById('recordBtn').addEventListener('click', function() {
       if (recorder.isRecording()) {
+        var heldKeys = getHeldNoteIndices();
+        if (heldKeys.length > 0) {
+          recorder.finalizeHeldNotes(heldKeys);
+        }
+        releaseAllKeys();
         recorder.stopRecording();
       } else {
         if (recorder.isPlaying()) {
@@ -223,6 +271,11 @@ var SynthApp = window.SynthApp || {};
 
     document.getElementById('stopBtn').addEventListener('click', function() {
       if (recorder.isRecording()) {
+        var heldKeys = getHeldNoteIndices();
+        if (heldKeys.length > 0) {
+          recorder.finalizeHeldNotes(heldKeys);
+        }
+        releaseAllKeys();
         recorder.stopRecording();
       }
       if (recorder.isPlaying()) {
@@ -235,6 +288,11 @@ var SynthApp = window.SynthApp || {};
         recorder.stopPlayback();
       } else {
         if (recorder.isRecording()) {
+          var heldKeys = getHeldNoteIndices();
+          if (heldKeys.length > 0) {
+            recorder.finalizeHeldNotes(heldKeys);
+          }
+          releaseAllKeys();
           recorder.stopRecording();
         }
         recorder.playRecording();

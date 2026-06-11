@@ -192,6 +192,32 @@ body {
   background: linear-gradient(180deg, transparent 0%, rgba(0, 240, 255, 0.12) 50%, transparent 100%);
 }
 
+.key-btn.selected {
+  border-color: var(--neon-magenta);
+  box-shadow: 0 0 14px var(--neon-magenta-dim), inset 0 0 20px rgba(255, 0, 170, 0.04);
+}
+
+.key-btn.selected .key-note {
+  color: var(--neon-magenta);
+  text-shadow: 0 0 8px var(--neon-magenta-glow);
+}
+
+.key-btn.selected .key-hint {
+  color: var(--neon-magenta);
+}
+
+.key-btn.selected::after {
+  content: '\25C6';
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.45rem;
+  color: var(--neon-magenta);
+  text-shadow: 0 0 6px var(--neon-magenta-glow);
+  opacity: 0.8;
+}
+
 .key-note {
   font-family: var(--font-mono);
   font-size: 0.95rem;

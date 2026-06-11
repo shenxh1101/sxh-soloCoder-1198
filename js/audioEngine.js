@@ -11,9 +11,20 @@ SynthApp.AudioEngine = (function() {
   var delayGain = null;
   var delayFeedback = null;
 
-  var waveform = 'sine';
-  var adsr = { attack: 0.01, decay: 0.1, sustain: 0.8, release: 0.2 };
   var effects = { reverbMix: 0.3, delayMix: 0.2, delayTime: 0.3 };
+
+  var selectedKey = -1;
+
+  var keySettings = [];
+  for (var i = 0; i < 8; i++) {
+    keySettings.push({
+      waveform: 'sine',
+      attack: 0.01,
+      decay: 0.1,
+      sustain: 0.8,
+      release: 0.2
+    });
+  }
 
   var activeNotes = {};
 
@@ -85,19 +96,20 @@ SynthApp.AudioEngine = (function() {
 
     var frequency = SynthApp.NOTE_FREQUENCIES[noteIndex];
     var now = audioCtx.currentTime;
+    var ks = keySettings[noteIndex];
 
     if (activeNotes[noteIndex]) {
       noteOff(noteIndex);
     }
 
     var osc = audioCtx.createOscillator();
-    osc.type = waveform;
+    osc.type = ks.waveform;
     osc.frequency.value = frequency;
 
     var gainNode = audioCtx.createGain();
     gainNode.gain.setValueAtTime(0, now);
-    gainNode.gain.linearRampToValueAtTime(1.0, now + adsr.attack);
-    gainNode.gain.linearRampToValueAtTime(adsr.sustain, now + adsr.attack + adsr.decay);
+    gainNode.gain.linearRampToValueAtTime(1.0, now + ks.attack);
+    gainNode.gain.linearRampToValueAtTime(ks.sustain, now + ks.attack + ks.decay);
 
     osc.connect(gainNode);
     gainNode.connect(dryGain);
@@ -118,13 +130,14 @@ SynthApp.AudioEngine = (function() {
 
     var entry = activeNotes[noteIndex];
     var now = audioCtx.currentTime;
+    var ks = keySettings[noteIndex];
 
     var currentGain = entry.gainNode.gain.value;
     entry.gainNode.gain.cancelScheduledValues(now);
     entry.gainNode.gain.setValueAtTime(currentGain, now);
-    entry.gainNode.gain.linearRampToValueAtTime(0, now + adsr.release);
+    entry.gainNode.gain.linearRampToValueAtTime(0, now + ks.release);
 
-    var stopTime = now + adsr.release + 0.1;
+    var stopTime = now + ks.release + 0.1;
     entry.oscillator.stop(stopTime);
 
     var startedAt = entry.startedAt;
@@ -142,23 +155,82 @@ SynthApp.AudioEngine = (function() {
     }
   }
 
+  function stopAllImmediate() {
+    var keys = Object.keys(activeNotes);
+    for (var i = 0; i < keys.length; i++) {
+      var idx = parseInt(keys[i]);
+      var entry = activeNotes[idx];
+      try {
+        entry.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+        entry.gainNode.gain.value = 0;
+        entry.oscillator.stop(audioCtx.currentTime);
+        entry.oscillator.disconnect();
+        entry.gainNode.disconnect();
+      } catch (e) {}
+      delete activeNotes[idx];
+    }
+  }
+
+  function selectKey(noteIndex) {
+    selectedKey = noteIndex;
+  }
+
+  function getSelectedKey() {
+    return selectedKey;
+  }
+
+  function getKeySettings(noteIndex) {
+    if (noteIndex >= 0 && noteIndex < 8) {
+      return {
+        waveform: keySettings[noteIndex].waveform,
+        attack: keySettings[noteIndex].attack,
+        decay: keySettings[noteIndex].decay,
+        sustain: keySettings[noteIndex].sustain,
+        release: keySettings[noteIndex].release
+      };
+    }
+    return null;
+  }
+
+  function setKeySettings(noteIndex, params) {
+    if (noteIndex < 0 || noteIndex >= 8) return;
+    if (params.waveform !== undefined) keySettings[noteIndex].waveform = params.waveform;
+    if (params.attack !== undefined) keySettings[noteIndex].attack = params.attack;
+    if (params.decay !== undefined) keySettings[noteIndex].decay = params.decay;
+    if (params.sustain !== undefined) keySettings[noteIndex].sustain = params.sustain;
+    if (params.release !== undefined) keySettings[noteIndex].release = params.release;
+  }
+
+  function setAllKeySettings(params) {
+    for (var i = 0; i < 8; i++) {
+      setKeySettings(i, params);
+    }
+  }
+
   function setWaveform(w) {
-    waveform = w;
+    if (selectedKey >= 0) {
+      keySettings[selectedKey].waveform = w;
+    }
   }
 
   function getWaveform() {
-    return waveform;
+    if (selectedKey >= 0) {
+      return keySettings[selectedKey].waveform;
+    }
+    return keySettings[0].waveform;
   }
 
   function setADSR(params) {
-    if (params.attack !== undefined) adsr.attack = params.attack;
-    if (params.decay !== undefined) adsr.decay = params.decay;
-    if (params.sustain !== undefined) adsr.sustain = params.sustain;
-    if (params.release !== undefined) adsr.release = params.release;
+    if (selectedKey >= 0) {
+      setKeySettings(selectedKey, params);
+    }
   }
 
   function getADSR() {
-    return adsr;
+    if (selectedKey >= 0) {
+      return getKeySettings(selectedKey);
+    }
+    return getKeySettings(0);
   }
 
   function setEffects(params) {
@@ -196,6 +268,12 @@ SynthApp.AudioEngine = (function() {
     noteOn: noteOn,
     noteOff: noteOff,
     stopAll: stopAll,
+    stopAllImmediate: stopAllImmediate,
+    selectKey: selectKey,
+    getSelectedKey: getSelectedKey,
+    getKeySettings: getKeySettings,
+    setKeySettings: setKeySettings,
+    setAllKeySettings: setAllKeySettings,
     setWaveform: setWaveform,
     getWaveform: getWaveform,
     setADSR: setADSR,
